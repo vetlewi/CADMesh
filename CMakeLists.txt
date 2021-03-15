@@ -1,12 +1,6 @@
-cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
-project(cadmesh)
-
-set(CADMESH_MAJOR_VERSION 1)
-set(CADMESH_MINOR_VERSION 1)
-set(CADMESH_PATCH_VERSION 0)
-set(CADMESH_VERSION
-    ${CADMESH_MAJOR_VERSION}.${CADMESH_MINOR_VERSION}.${CADMESH_PATCH_VERSION})
+project(cadmesh VERSION 1.1.0 LANGUAGES C CXX)
 
 include(FindPkgConfig)
 include(ExternalProject)
@@ -16,6 +10,8 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules ${CMAKE_MODULE_PATH})
 # Make the include and lib directories in the build area.
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CPM.cmake)
 
 # GEANT4
 option(WITH_GEANT4_UIVIS "Build example with Geant4 UI and Vis drivers" ON)
@@ -35,18 +31,19 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     include_directories(${OPENGL_INCLUDE_DIR})
 endif()
 
-# Tetgen
+# Add tetgen
 option(WITH_SYS_TETGEN "WITH_SYS_TETGEN" OFF)
 if(${WITH_SYS_TETGEN} MATCHES "ON")
     find_package(tetgen)
 else()
-    ExternalProject_Add(
-        tetgen_external
-        SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/tetgen
-        GIT_REPOSITORY https://github.com/christopherpoole/tetgen.git
-        CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}
-    )
-    include_directories(${PROJECT_BINARY_DIR}/include)
+    CPMAddPackage(
+        NAME tetgen
+        GITHUB_REPOSITORY christopherpoole/tetgen
+        VERSION 1.5
+        DOWNLOAD_ONLY YES)
+    add_library(tetgen ${tetgen_SOURCE_DIR}/tetgen.cxx ${tetgen_SOURCE_DIR}/predicates.cxx)
+    target_include_directories(tetgen PUBLIC $<BUILD_INTERFACE:${tetgen_SOURCE_DIR}>)
+    add_library(tetgen::tetgen ALIAS tetgen)
 endif()
 
 # Open Asset Importer Library
@@ -54,14 +51,11 @@ option(WITH_SYS_ASSIMP "WITH_SYS_ASSIMP" OFF)
 if(${WITH_SYS_ASSIMP} MATCHES "ON")
     find_package(assimp)
 else()
-    ExternalProject_Add(
-        assimp_external
-        SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/assimp
-        GIT_REPOSITORY https://github.com/assimp/assimp.git
-        GIT_TAG v3.1.1
-        CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}
-    )
-    include_directories(${PROJECT_BINARY_DIR}/include/assimp/include)
+    CPMAddPackage(
+        NAME assimp
+        GITHUB_REPOSITORY assimp/assimp
+        VERSION 3.1.1
+        OPTIONS "ASSIMP_BUILD_TESTS OFF" "ASSIMP_DOUBLE_PRECISION ON")
 endif()
 
 # CADMesh
@@ -77,14 +71,14 @@ add_library(cadmesh "SHARED" ${sources} ${headers})
 # Link against either the system libraries, or the external project libaries.
 if(${WITH_SYS_TETGEN} MATCHES "OFF")
     add_dependencies(cadmesh tetgen_external)
-    target_link_libraries(cadmesh -L${CMAKE_BINARY_DIR}/lib tet)
+    target_link_libraries(cadmesh tet::tet)
 else()
     target_link_libraries(cadmesh tet)
 endif()
 
 if(${WITH_SYS_ASSIMP} MATCHES "OFF")
     add_dependencies(cadmesh assimp_external)
-    target_link_libraries(cadmesh -L${CMAKE_BINARY_DIR}/lib assimp)
+    target_link_libraries(cadmesh assimp::assimp)
 else()
     target_link_libraries(cadmesh assimp)
 endif()
